@@ -1,0 +1,20 @@
+base_config: trainer-ros.yaml
+
+exp_name: kenkyusitsu
+
+data:
+    dataset_args:
+        min_depth: 0.3
+        max_depth: 30.0
+    apply_bound: false   # if false, bbox crop is applied after generate_sdf_samples via valid_mask
+    # Derived from /home/daizhirui/Data/NewerCollege/gt-mesh-small.ply
+    # mesh extent X[-5.04, 55.45] Y[-67.99, -1.81] Z[-1.37, 26.16]; ~2m padding.
+    bound_min: [-0.0, -1.5, -0.3]
+    bound_max: [10.0, 1.5, 1.0]
+
+bound_min: [-0.0, -1.5, -0.3]
+bound_max: [10.0, 1.5, 1.0]
+# final_iterations: 0
+# final_evaluate: true
+slice_center: [0,0,-0.1]
+# mesh_resolution: 0.01

@@ -60,6 +60,7 @@ class RosDataLoader:
         intrinsics_cy: Optional[float] = None,
         min_depth: float = 0.0,
         max_depth: float = -1.0,
+        depth_storage_dtype: str = "fp32", 
     ):
         self.node = ros_node
         self.apply_bound = apply_bound
@@ -68,6 +69,7 @@ class RosDataLoader:
         self.intrinsics = None
         self.min_depth = min_depth
         self.max_depth = max_depth
+        self.depth_storage_dtype = depth_storage_dtype        
 
         if self.bound_min is not None:
             self.bound_min = torch.tensor(self.bound_min, dtype=torch.float32)
@@ -355,6 +357,7 @@ class RosDataLoader:
             ref_pose=pose,
             min_depth=self.min_depth if self.min_depth >= 0 else None,
             max_depth=self.max_depth if self.max_depth > 0 else None,
+            depth_storage_dtype=self.depth_storage_dtype,
         )
         if self.apply_bound:
             frame.apply_bound(self.bound_min, self.bound_max)
@@ -444,6 +447,18 @@ def _image_to_depth_tensor(msg: Image, depth_scale: float) -> torch.Tensor:
     return torch.from_numpy(arr.astype(np.float32, copy=True)) * depth_scale
 
 
+from sensor_msgs_py import point_cloud2
+
 def _cloud_to_xyz_tensor(msg: PointCloud2) -> torch.Tensor:
-    points_np = np.frombuffer(msg.data, dtype=np.float32).reshape(-1, msg.point_step // 4)[:, :3]
+    points = point_cloud2.read_points(
+        msg,
+        field_names=("x", "y", "z"),
+        skip_nans=True,
+    )
+    points_np = np.column_stack((
+        points["x"],
+        points["y"],
+        points["z"],
+    )).astype(np.float32, copy=False)
+
     return torch.from_numpy(points_np.copy())

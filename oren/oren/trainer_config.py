@@ -45,6 +45,13 @@ class TrainerConfig(ConfigABC):
     save_slice: bool = True
     slice_center: Optional[list] = None  # if None, use the center of the scene bounding box
     ckpt_interval: int = -1  # interval to save checkpoints, -1 means no intermediate checkpoints
-    profiling: bool = False
+    profiling: bool = True
     profiling_verbose: bool = False
     frozen_model_path: Optional[str] = None
+    # --- SDF=0 contour (surface) drawn on the slice images saved by evaluate() (slice_*_*.png) ---
+    zero_line_enabled: bool = True  # draw the SDF=0 contour on the slice images
+    zero_line_color: str = "k"  # matplotlib colour name / hex (e.g. "k", "white", "#00ff00")
+    zero_line_width: float = 1.5  # line width [pt]
+    zero_line_style: str = "solid"  # solid | dashed | dashdot | dotted
+    zero_line_overlay: bool = True  # on the `sdf` slice also draw the sdf_prior=0 line (shows what the network changed)
+    zero_line_overlay_style: str = "dashed"  # line style of that second line

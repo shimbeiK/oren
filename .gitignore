@@ -227,3 +227,9 @@ log/
 scripts/merge_metrics.py
 script-for-paper/
 
+oren_venv
+*.npz
+*.ply
+*.stl
+chomp_out
+dlio_newer_college_recording

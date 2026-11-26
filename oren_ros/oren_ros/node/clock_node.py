@@ -19,7 +19,7 @@ class ClockNode(Node):
 
         self.declare_parameter("clock_rate", 100.0)
         self.declare_parameter("start_time", 0.0)
-        self.declare_parameter("start_time_from_tf", False)
+        self.declare_parameter("start_time_from_tf", True)
 
         self._clock_rate = float(self.get_parameter("clock_rate").value)
         self._start_time = float(self.get_parameter("start_time").value)

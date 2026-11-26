@@ -16,9 +16,10 @@ from launch_ros.actions import Node
 
 
 def _rviz_action(context, *args, **kwargs):
-    """Resolve `rviz_config` at runtime so we can omit `-d` when it is empty."""
+    """Resolve rviz_config at runtime and launch RViz2 with the specified config."""
     rviz_config = LaunchConfiguration("rviz_config").perform(context)
     rviz_args = ["-d", rviz_config] if rviz_config else []
+
     return [
         Node(
             package="rviz2",
@@ -36,39 +37,50 @@ def generate_launch_description():
 
     trainer_config_path_arg = DeclareLaunchArgument(
         "trainer_config_path",
-        default_value=PathJoinSubstitution([oren_ros_share, "configs", "trainer-ros.yaml"]),
+        default_value=PathJoinSubstitution(
+            [oren_ros_share, "configs", "trainer-ros.yaml"]
+        ),
         description="Trainer config YAML path.",
     )
+
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
         default_value="true",
         description="Whether to use ROS simulation time (e.g. from a ros2 bag).",
     )
+
     bag_path_arg = DeclareLaunchArgument(
         "bag_path",
         default_value="ros2_bag",
         description="ROS 2 bag directory path.",
     )
+
     play_rate_arg = DeclareLaunchArgument(
         "play_rate",
         default_value="1.0",
         description="ros2 bag play rate.",
     )
+
     bag_delay_arg = DeclareLaunchArgument(
         "bag_delay",
         default_value="1.0",
         description="Seconds to wait before starting ros2 bag play.",
     )
+
     rviz_arg = DeclareLaunchArgument(
         "rviz",
-        default_value="false",
+        default_value="true",
         description="If true, launch RViz alongside the mapping node.",
     )
+
     rviz_config_arg = DeclareLaunchArgument(
         "rviz_config",
-        default_value="",
-        description="Path to an RViz .rviz config file. Empty -> open RViz with its default layout.",
+        default_value=PathJoinSubstitution(
+            [oren_ros_share, "rviz", "lidar.rviz"]
+        ),
+        description="Path to the RViz configuration file.",
     )
+
     visualize_sdf_arg = DeclareLaunchArgument(
         "visualize_sdf",
         default_value="true",
@@ -87,7 +99,9 @@ def generate_launch_description():
         name="oren_mapping_node",
         output="screen",
         parameters=[
-            PathJoinSubstitution([oren_ros_share, "configs", "ros2-params.yaml"]),
+            PathJoinSubstitution(
+                [oren_ros_share, "configs", "ros2-params.yaml"]
+            ),
             {"use_sim_time": use_sim_time},
             {"trainer_config_path": trainer_config_path},
         ],
@@ -99,7 +113,9 @@ def generate_launch_description():
         name="sdf_query_node",
         output="screen",
         parameters=[
-            PathJoinSubstitution([oren_ros_share, "configs", "ros2-params.yaml"]),
+            PathJoinSubstitution(
+                [oren_ros_share, "configs", "ros2-params.yaml"]
+            ),
             {"use_sim_time": use_sim_time},
         ],
         condition=IfCondition(LaunchConfiguration("visualize_sdf")),
@@ -145,6 +161,10 @@ def generate_launch_description():
                     trainer_config_path,
                     " | bag: ",
                     bag_path,
+                    " | RViz config: ",
+                    PathJoinSubstitution(
+                        [oren_ros_share, "rviz", "lidar.rviz"]
+                    ),
                 ]
             ),
             clock_node,

@@ -1,0 +1,51 @@
+base_config: trainer-ros.yaml
+
+exp_name: real_time_test
+
+data:
+    dataset_args:
+        min_depth: 0.1
+        max_depth: 10.0
+    apply_bound: true   # if false, bbox crop is applied after generate_sdf_samples via valid_mask
+    # Derived from /home/daizhirui/Data/NewerCollege/gt-mesh-small.ply
+    # mesh extent X[-5.04, 55.45] Y[-67.99, -1.81] Z[-1.37, 26.16]; ~2m padding.
+    bound_min: [-6.0, -6.0, -0.3]
+    bound_max: [6.0, 6.0, 2.0]
+
+key_frame_set:
+    force_current_frame: false   # 既定 true。現在のフレームを必ず学習に使う
+    max_key_frames: 40          # 既定 0（無制限）。まず 30〜60 で試す
+    identifier: oren.key_frame_set.KeyFrameSetConfig
+    insert_method: intersection
+    insert_interval: 50
+    insert_ratio: 0.8
+    frame_selection: multiple_max_set_coverage
+    selection_window_size: 1
+    frame_weight: uniform
+
+model:
+    octree_cfg:
+        resolution: 0.02
+        tree_depth: 10 # 0.7*2^8=112m
+        semi_sparse_depth: 5
+        init_voxel_num: 400000
+        
+num_rays_total: 10240
+sample_rays:
+    depth_min: 0.1
+    depth_max: 10.0
+    # n_stratified: 3
+    # n_perturbed: 2
+
+    sigma_s: 0.2
+    surface_margin: 0.6
+
+bound_min: [-6.0, -6.0, -0.3]
+bound_max: [6.0, 6.0, 2.0]
+final_iterations: 10000
+# final_evaluate: true
+slice_center: [0.0,0.0,0.5]
+mesh_resolution: 0.10
+# profiling: true
+# profiling_verbose: true
+zero_line_width: 0.5  # line width [pt]

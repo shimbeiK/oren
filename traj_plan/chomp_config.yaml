@@ -1,0 +1,66 @@
+# ORENのSDFを使ったオフラインCHOMP経路計画の設定
+map:
+  npz: query_result.npz      # make_query_npz.py / oren_query.py の出力 (points, sdf1)
+  points_key: points
+  sdf_key: sdf1
+  grad_key: grad_sdf             # 解析勾配を保存してあれば例: grad_sdf (無ければ格子の中心差分)
+  bbox: null                 # [xmin, ymin, zmin, xmax, ymax, zmax] で切り出す (学習範囲に合わせる)
+  nan_fill: 1.0              # 欠損セルの値 (正=自由空間扱い)
+
+planning:
+  dof: 2                     # 2: (x,y) を動かし base_z 固定 (台車) / 3: (x,y,z) を動かす
+  base_z: 0.0                # dof=2 のときの基準位置の高さ (floor_height.py で床の高さを確認)
+  start: [-0.75, -0.34, 0.0]    # dof=2 のとき z は使われない
+  goal: [-3.1, 1.6, 0.0]
+  start_yaw_deg: null        # box のみ。null=goal 方向
+  goal_yaw_deg: null
+
+robot:
+  type: box                  # spheres: 球の集合 / box: 直方体 (下の box を使う)
+  yaw_mode: tangent          # box のみ。free: 向きも最適化 / tangent: 向き=経路の接線方向 (軽い)
+  yaw_scale: 0.5             # box の free のときだけ使う [m/rad]
+  box:                       # 車体座標 x前 y左 z上、基準位置(base)からの寸法・オフセット[m]
+    # 以前の箱(底面が床の高さ z=0)は床の点が衝突扱いになった。底面を床から 0.2 m 浮かせ、上端は 0.7 m のまま。
+    # ★実機の「床から車体底面までの高さ」と「車体の高さ」に合わせて修正すること (床の SDF 誤差 ~0.1 m を見込む)
+    size: [0.7, 0.6, 0.5]            # 全長 x 全幅 x 全高 (底面 z=0.20 〜 上端 z=0.70)
+    center_offset: [0.0, 0.0, 0.30]  # 箱の中心の基準位置からの位置
+    sample_spacing: 0.1      # 表面の評価点間隔 (小さいほど正確で重い)
+    point_radius: null       # 点の被覆半径 [m]。null=間隔の半分の対角 (隙間が出ない値)
+  spheres:                   # [dx, dy, dz, radius] (type: spheres のとき)
+    - [0.0, 0.0, 0.15, 0.20]
+    - [0.0, 0.0, 0.50, 0.25]
+    - [0.0, 0.0, 0.85, 0.25]
+  margin: 0.02               # CHOMP の ε: 表面からこの距離まで障害物コストが働く (小さいと壁際で力が弱く接触しやすい)
+
+chomp:
+  n_waypoints: 60
+  max_iterations: 300
+  eta: 50.0                  # 大きいほど1回の更新が小さい
+  smoothness_weight: 1.0
+  obstacle_weight: 10.0
+  tolerance: 1.0e-6
+  restarts: 1                # >0 で摂動初期値を追加して最良を採用
+  restart_noise: 0.3
+  seed: 0
+  init_method: auto          # straight(直線) / astar(格子A*) / auto(直線で接触したらA*)
+  init_resolution: 0.1       # A* の格子間隔 [m]
+  init_clearance: 0.05       # A* で要求する表面距離 [m]。見つからなければ 0.05→0.02→0 に自動で下げる
+  # --- 接触の禁止 ---
+  required_clearance: 0.02   # 最終経路の最小クリアランス(フィルタ後)がこれ未満なら失敗: path.csv を出さない
+  max_repairs: 5             # 満たさないとき obstacle_weight を倍々にして最大この回数やり直す
+  repair_weight_factor: 3.0
+
+# 障害物コスト計算の除外フィルタ (元のSDFは変更しない)
+obstacle_filter:
+  enabled: false
+  distance_min: -0.0        # 床の SDF 誤差で面が少し内側にずれていても除外できるよう負にする (0.0: 内部は対象外)
+  distance_max: 0.20         # 障害物からこの距離以内
+  max_angle_deg: 30.0        # 勾配方向が direction から±この角度以内
+  direction: [0.0, 0.0, 1.0] # Z軸正方向
+  distance_reference: center # center: d(評価点の中心) / surface: d - 点の半径
+
+output:
+  dir: chomp_out
+  plot: true
+  save_init: true            # 初期経路 (A*/直線) を init_<名前>.csv に保存し、図に破線で重ねる
+  export_filter_ply: false   # true で除外される格子セルを PLY に出力 (CloudCompare で確認)

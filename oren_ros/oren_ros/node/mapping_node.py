@@ -15,7 +15,9 @@ from rclpy.signals import SignalHandlerOptions
 
 from oren.trainer_config import TrainerConfig
 from oren_ros.ros_trainer import RosTrainer
+import sys
 
+sys.setswitchinterval(1e-4)   # 既定は5e-3。メインスレッドの待ちの上限を下げる
 
 def main(args=None):
     # Disable rclpy's own SIGINT handler so KeyboardInterrupt lands in
@@ -36,6 +38,7 @@ def main(args=None):
         ros_trainer = RosTrainer(cfg, node)
         ros_trainer.run()
     finally:
+        print("[main] shutting down ROS...")
         executor.shutdown()
         spin_thread.join(timeout=2.0)
         node.destroy_node()

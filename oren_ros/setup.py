@@ -3,17 +3,31 @@ import os
 
 from setuptools import find_packages, setup
 
+
 package_name = "oren_ros"
 
 
-def _collect_configs():
+def _collect_data_files(directory):
     entries = []
-    for dirpath, _, filenames in os.walk("configs", followlinks=True):
-        files = [os.path.join(dirpath, f) for f in filenames]
-        if files:
-            entries.append((os.path.join("share", package_name, dirpath), files))
-    return entries
 
+    if not os.path.isdir(directory):
+        return entries
+
+    for dirpath, _, filenames in os.walk(directory, followlinks=True):
+        files = [
+            os.path.join(dirpath, filename)
+            for filename in filenames
+        ]
+
+        if files:
+            destination = os.path.join(
+                "share",
+                package_name,
+                dirpath,
+            )
+            entries.append((destination, files))
+
+    return entries
 
 
 setup(
@@ -28,10 +42,20 @@ setup(
     packages=find_packages(),
     zip_safe=True,
     data_files=[
-        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
-        ("share/" + package_name, ["package.xml"]),
-        ("share/" + package_name + "/launch", glob("launch/*.py")),
-        *_collect_configs(),
+        (
+            "share/ament_index/resource_index/packages",
+            ["resource/" + package_name],
+        ),
+        (
+            "share/" + package_name,
+            ["package.xml"],
+        ),
+        (
+            "share/" + package_name + "/launch",
+            glob("launch/*.py"),
+        ),
+        *_collect_data_files("configs"),
+        *_collect_data_files("rviz"),
     ],
     entry_points={
         "console_scripts": [

@@ -252,9 +252,9 @@ class SdfQueryNode(Node):
         info.resolution = self._resolution
         info.length_x = self._x_cells * self._resolution
         info.length_y = self._y_cells * self._resolution
-        info.pose.position.x = self._x if not self._attached_to_frame else 0.0
-        info.pose.position.y = self._y if not self._attached_to_frame else 0.0
-        info.pose.position.z = self._z if not self._attached_to_frame else 0.0
+        info.pose.position.x = self._x
+        info.pose.position.y = self._y
+        info.pose.position.z = self._z
         info.pose.orientation.w = 1.0
         msg.info = info
 

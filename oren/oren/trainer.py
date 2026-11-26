@@ -74,6 +74,9 @@ class Trainer:
         self.epoch = 0
         self.global_step = 0
         self.num_iterations = 0
+        # >0: log |SDF| of each incoming frame against the current model for the first N frames
+        # (used when resuming from a saved model to check that the odom frame is still aligned).
+        self.align_check_frames = 0
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.cfg.lr)
         self.criterion = Criterion(
             cfg=self.cfg.criterion,
@@ -207,8 +210,18 @@ class Trainer:
         with self.timer_get_points:
             points = frame.get_points(to_world_frame=True, device=self.cfg.device)
 
+        # Resume check: how far is the new observation from the loaded map? (before it is inserted / trained on)
+        check_align = self.epoch < self.align_check_frames
+        if check_align:
+            self._log_alignment(points, "before-insert")
+
         with self.timer_octree_insert:
             _, seen_voxels = self.insert_points_to_octree(points)
+
+        # Same check right after octree insertion (before any training step): a jump here means that the
+        # insertion itself corrupts the loaded map (e.g. allocation state was not restored from the checkpoint).
+        if check_align:
+            self._log_alignment(points, "after-insert")
 
         with self.timer_key_frame_set_update:
             is_key_frame = self.update_key_frame_set(frame, seen_voxels)
@@ -225,6 +238,19 @@ class Trainer:
         if self.cfg.ckpt_interval > 0 and self.epoch % self.cfg.ckpt_interval == 0:
             self.save_model(f"epoch_{self.epoch:04d}.pth")
         return True
+
+    def _log_alignment(self, points: torch.Tensor, tag: str = "") -> None:
+        """Log |SDF| of the incoming points under the current model (small median => odom is aligned with the map)."""
+        try:
+            with torch.no_grad():
+                out = self.query_sdf(points[::20], return_grad=False, prior_only=False)
+            s = out["sdf"].detach().abs().flatten()
+            self.logger.info(
+                f"[align] {tag} epoch={self.epoch} n={s.numel()} |SDF| median={s.median().item():.3f} "
+                f"p25={s.quantile(0.25).item():.3f} p75={s.quantile(0.75).item():.3f}"
+            )
+        except Exception as e:  # noqa: BLE001 — diagnostics must never stop mapping
+            self.logger.info(f"[align] check failed: {e!r}")
 
     def fetch_one_frame(self) -> Optional[Frame]:
         with self.timer_fetch_frame:
@@ -391,8 +417,25 @@ class Trainer:
                         perturb_eta=self.cfg.sample_rays.sigma_s,
                         valid_mask=mask,
                     )
-                    loss.backward()
-                    self.optimizer.step()
+                    # Guard: a non-finite loss/gradient (e.g. an empty valid mask => mean of nothing) would turn all
+                    # weights into NaN through Adam, and every later query (incl. /sdf_grid_map) would be NaN.
+                    if torch.isfinite(loss):
+                        loss.backward()
+                        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), float("inf"))
+                        if torch.isfinite(grad_norm):
+                            self.optimizer.step()
+                        else:
+                            self.optimizer.zero_grad(set_to_none=True)
+                            self.logger.info(
+                                f"[nan] non-finite gradient at step {self.global_step}: step skipped "
+                                f"(valid samples {int(mask.sum())}/{mask.numel()})"
+                            )
+                    else:
+                        self.optimizer.zero_grad(set_to_none=True)
+                        self.logger.info(
+                            f"[nan] non-finite loss at step {self.global_step}: step skipped "
+                            f"(valid samples {int(mask.sum())}/{mask.numel()})"
+                        )
             self.global_step += 1
 
             self.logger.info(f"loss_dict: {self.loss_dict}")
@@ -637,6 +680,29 @@ class Trainer:
             "memory_records": memory_records,
         }
 
+    def _draw_zero_lines(self, ax, slice_name: str, slice_values: dict, slice_bound) -> None:
+        """Draw the SDF=0 contour (the surface) on a slice plot. Styles come from cfg.zero_line_*.
+
+        sdf_prior panel   : zero level of sdf_prior
+        sdf / residual    : zero level of the final sdf (sdf = prior + residual)
+        sdf panel         : additionally the zero level of sdf_prior as a second line when cfg.zero_line_overlay is on,
+                            so the shift made by the network is visible.
+        """
+        cfg = self.cfg
+        main = slice_values["sdf_prior"] if slice_name == "sdf_prior" else slice_values["sdf"]
+        layers = [(main, cfg.zero_line_style)]
+        if cfg.zero_line_overlay and slice_name == "sdf":
+            layers.append((slice_values["sdf_prior"], cfg.zero_line_overlay_style))
+        n_rows, n_cols = main.shape
+        xs = np.linspace(slice_bound[0][0], slice_bound[1][0], n_cols)
+        ys = np.linspace(slice_bound[0][1], slice_bound[1][1], n_rows)
+        for values, linestyle in layers:
+            if np.nanmin(values) < 0.0 < np.nanmax(values):  # no zero crossing on this slice -> nothing to draw
+                ax.contour(
+                    xs, ys, values, levels=[0.0], colors=cfg.zero_line_color,
+                    linewidths=cfg.zero_line_width, linestyles=linestyle,
+                )
+
     def evaluate(self, epoch_dir: Optional[str] = None):
         bound_min = self.cfg.bound_min
         bound_max = self.cfg.bound_max
@@ -693,8 +759,9 @@ class Trainer:
                 axis_name = slice_config["axis_name"]
                 slice_bound = slice_result["slice_bound"].tolist()  # (bound_min, bound_max) for the two axes
 
+                all_values = {k: slice_result[k].cpu().numpy() for k in ("sdf_prior", "sdf_residual", "sdf")}
                 for slice_name in ["sdf_prior", "sdf_residual", "sdf"]:
-                    slice_values = slice_result[slice_name].cpu().numpy()
+                    slice_values = all_values[slice_name]
                     plt.figure()
                     im = plt.imshow(
                         slice_values,
@@ -707,6 +774,8 @@ class Trainer:
                         origin="lower",
                         cmap="jet",
                     )
+                    if self.cfg.zero_line_enabled:
+                        self._draw_zero_lines(plt.gca(), slice_name, all_values, slice_bound)
                     plt.colorbar(im, shrink=0.8)
                     plt.xlabel(slice_config["xlabel"], fontsize=fontsize)
                     plt.ylabel(slice_config["ylabel"], fontsize=fontsize)

@@ -3,6 +3,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import trimesh
+from matplotlib.lines import Line2D
 from pysdf import SDF
 
 from oren.evaluator_oren import OrenEvaluator
@@ -85,14 +86,53 @@ def visualize_slice(
     x_label: str,
     y_label: str,
     title_prefix: str,
+    zero_sdf: np.ndarray | None = None,
+    zero_sdf_est: np.ndarray | None = None,
+    line_color: str = "k",
+    line_width: float = 1.5,
+    line_style: str = "solid",
+    est_line_style: str = "dashed",
+    draw_zero_line: bool = True,
 ):
+    """data を表示し、SDF=0 の境界を黒線で重ねる。
+
+    zero_sdf     : 黒の実線で SDF=0 を描く SDF 配列。None なら data 自身 (SDF を表示するパネル用)。
+                   誤差パネルでは data が誤差なので、正解 (gt_sdf) を渡す。
+    zero_sdf_est : 黒の破線で SDF=0 を重ねる推定 SDF (誤差パネルで推定側の境界も見たいとき)。
+    """
+    n_rows, n_cols = data.shape
+    # imshow の extent は画素の外縁なので、格子点が画素の中心に来るよう半画素ぶん広げる
+    # (これをしないと、0 の境界線が実際の位置から 半画素 = resolution/2 ずれて見える)
+    dx = (extent[1] - extent[0]) / max(n_cols - 1, 1)
+    dy = (extent[3] - extent[2]) / max(n_rows - 1, 1)
+    img_extent = [extent[0] - dx / 2, extent[1] + dx / 2, extent[2] - dy / 2, extent[3] + dy / 2]
+    xs = np.linspace(extent[0], extent[1], n_cols)
+    ys = np.linspace(extent[2], extent[3], n_rows)
+
     fig, ax = plt.subplots(figsize=(6, 5))
     img = ax.imshow(
         data,
         origin="lower",
-        extent=extent,
+        extent=img_extent,
         cmap="coolwarm",
     )
+
+    def draw_zero(sdf, linestyles, label):
+        sdf = np.asarray(sdf)
+        if sdf.shape != data.shape or not (np.nanmin(sdf) < 0.0 < np.nanmax(sdf)):
+            return None  # 0 をまたがない (境界がこの断面に無い) ときは描かない
+        cs = ax.contour(xs, ys, sdf, levels=[0.0], colors=line_color, linewidths=line_width, linestyles=linestyles)
+        return cs
+
+    handles = []
+    base = data if zero_sdf is None else zero_sdf
+    if draw_zero_line and draw_zero(base, line_style, "SDF=0") is not None:
+        handles.append(Line2D([0], [0], color=line_color, lw=line_width, ls=line_style, label="SDF = 0" if zero_sdf is None else "gt SDF = 0"))
+    if draw_zero_line and zero_sdf_est is not None and draw_zero(zero_sdf_est, est_line_style, "est SDF=0") is not None:
+        handles.append(Line2D([0], [0], color=line_color, lw=line_width, ls=est_line_style, label="estimated SDF = 0"))
+    if handles:
+        ax.legend(handles=handles, loc="upper right", fontsize=8)
+
     ax.set_title(f"{title_prefix} at {slice_axis}={pos:.3f}")
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -148,11 +188,26 @@ def main():
     pred_error = np.clip(pred_error, -0.5, 0.5)
     print(f"gt_sdf.shape: {gt_sdf.shape}, pred_slice.shape: {prior_pred.shape}")
 
-    visualize_slice(gt_sdf, extent, args.slice_axis, slice_pos, x_label, y_label, "gt_sdf")
-    visualize_slice(prior_pred, extent, args.slice_axis, slice_pos, x_label, y_label, "sdf_prior")
-    visualize_slice(pred, extent, args.slice_axis, slice_pos, x_label, y_label, "sdf")
-    visualize_slice(prior_error, extent, args.slice_axis, slice_pos, x_label, y_label, "prior_error")
-    visualize_slice(pred_error, extent, args.slice_axis, slice_pos, x_label, y_label, "pred_error")
+    # SDF=0 の線の設定は trainer の yaml (zero_line_*) から読む
+    zl = dict(
+        line_color=trainer_cfg.zero_line_color,
+        line_width=trainer_cfg.zero_line_width,
+        line_style=trainer_cfg.zero_line_style,
+        est_line_style=trainer_cfg.zero_line_overlay_style,
+        draw_zero_line=trainer_cfg.zero_line_enabled,
+    )
+    err_zl = dict(zl)
+    visualize_slice(gt_sdf, extent, args.slice_axis, slice_pos, x_label, y_label, "gt_sdf", **zl)
+    visualize_slice(prior_pred, extent, args.slice_axis, slice_pos, x_label, y_label, "sdf_prior", **zl)
+    visualize_slice(pred, extent, args.slice_axis, slice_pos, x_label, y_label, "sdf", **zl)
+    visualize_slice(
+        prior_error, extent, args.slice_axis, slice_pos, x_label, y_label, "prior_error",
+        zero_sdf=gt_sdf, zero_sdf_est=prior_pred if trainer_cfg.zero_line_overlay else None, **err_zl,
+    )
+    visualize_slice(
+        pred_error, extent, args.slice_axis, slice_pos, x_label, y_label, "pred_error",
+        zero_sdf=gt_sdf, zero_sdf_est=pred if trainer_cfg.zero_line_overlay else None, **err_zl,
+    )
 
 
 if __name__ == "__main__":

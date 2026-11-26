@@ -14,3 +14,6 @@ data:
 
 bound_min: [-7.0, -70.0, -3.0]  # auto-overwritten from data.bound_* at trainer init
 bound_max: [58.0, 0.0, 28.0]
+# final_iterations: 0
+# final_evaluate: true
+slice_center: [0,0,0]

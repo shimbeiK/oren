@@ -1,0 +1,79 @@
+# ROS 2 parameter overlay for oren_mapping_node
+
+/**/oren_mapping_node:
+    ros__parameters:
+        trainer_config_path: ""
+
+        # --- Sensor / pose source selection ---
+        modality: lidar
+        use_odom: false
+        odom_msg_type: odometry
+        depth_scale: 0.002
+        # init_skip_init_phase: true
+        # init_lr_scale: 0.1
+
+        # --- Frame names ---
+        world_frame: odom
+        sensor_frame: ""
+        tf_lookup_timeout_sec: 0.5
+
+        # --- Time synchronization ---
+        sync_tolerance: 0.01
+
+        # --- Streaming behavior ---
+        no_data_timeout_sec: 0.0
+        # frame_queue_maxsize: 32
+        frame_queue_maxsize: 2
+        idle_block_sec: 0.0
+
+        # --- LiDAR topic ---
+        lidar_topic:
+            path: "/points_filtered"
+            # path: "/livox/lidar"
+            # path: "/lidar_points"
+            qos_preset: ""
+            qos_history: keep_last
+            qos_depth: 10
+            qos_reliability: best_effort
+            qos_durability: volatile
+
+        # --- Odometry topic ---
+        odom_topic:
+            path: "/odom"
+            qos_preset: ""
+            qos_history: keep_last
+            qos_depth: 10
+            qos_reliability: reliable
+            qos_durability: volatile
+
+
+/**/sdf_query_node:
+    ros__parameters:
+        # --- Grid geometry ---
+        # resolution: 0.5
+        # x_cells: 31
+        # y_cells: 31
+        resolution: 0.02
+        x_cells: 101
+        y_cells: 101
+        x: 1.0
+        y: 0.0
+        z: 0.5
+
+        # --- Output selection ---
+        publish_grid_map: true
+        publish_point_cloud: false
+        publish_gradient: true
+        query_prior: false
+        publish_rate: 10.0
+
+        # --- Frame attachment ---
+        attached_to_frame: true
+        attached_frame: "base_link"
+        world_frame: "odom"
+
+        # --- Topics / services ---
+        query_service: "query_sdf"
+        map_topic: "sdf_grid_map"
+        point_cloud_topic: "sdf_point_cloud"
+        trigger_service: "sdf_trigger_query"
